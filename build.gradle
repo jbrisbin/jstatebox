@@ -1,0 +1,43 @@
+apply plugin: "groovy"
+apply plugin: "idea"
+apply plugin: "maven"
+
+def description = "A statebox implementation for Java"
+group = "jstatebox"
+version = "0.1.0.SNAPSHOT"
+
+project.sourceCompatibility = 7
+
+configurations {
+  all*.exclude group: "commons-logging"
+  all*.exclude module: "groovy-all", version: "1.8.0-beta-3-SNAPSHOT"
+}
+
+repositories {
+  mavenLocal()
+  mavenCentral(artifactUrls: [
+               //"http://maven.springframework.org/milestone",
+               "http://scala-tools.org/repo-releases"
+               ])
+}
+
+dependencies {
+  groovy "org.codehaus.groovy:groovy:$groovyVersion"
+
+  // Logging
+  compile "org.slf4j:slf4j-api:$slf4jVersion"
+  runtime "org.slf4j:jcl-over-slf4j:$slf4jVersion"
+  runtime "ch.qos.logback:logback-classic:$logbackVersion"
+
+  // Scala
+  compile "org.scala-lang:scala-library:$scalaVersion"
+
+  // Testing
+  testCompile "org.spockframework:spock-core:$spockVersion"
+  testCompile "org.hamcrest:hamcrest-all:1.1"
+
+}
+
+task wrapper(type: Wrapper) { gradleVersion = "1.0-milestone-5" }
+
+idea.module.jdkName = "OpenJDK 1.7"
