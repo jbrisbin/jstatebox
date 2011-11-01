@@ -16,6 +16,8 @@ can use any of:
 1. An anonymous class derived from a special JStatebox interface.
 2. A Groovy closure.
 3. A Scala anonymous function.
+3. A Runnable (which returns null).
+4. A Callable (which returns a value).
 
 What this means for your app is higher overall throughput because there's no synchronization
 and, unless you do it on purpose in your handler, no blocking. This is probably only really
@@ -42,9 +44,16 @@ statebox with an entirely new value.
 
     def state3 = state1.modify({ s -> s + "World!" })
 
-`state3`'s value is *not* "Hello ". To merge the various stateboxes into a single value, call
-the `merge` method.
+`state3`'s value is "HelloWorld!" (without the space added in `state2`). To merge the various
+stateboxes into a single value, call the `merge` method.
 
     def state4 = state1.merge(state2, state3)
 
 To get the value of `state4`, call the `value()` method.
+
+    def greeting = state4.value()
+
+The value of `state4` is now "Hello World!". It is the composition of all the operations performed
+on all the stateboxes you merge. They are applied in order based on the system time. Operations
+added to a statebox within 1ms of another operation are still performed, but the order in which
+they are performed is undefined.
