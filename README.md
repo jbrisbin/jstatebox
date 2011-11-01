@@ -38,6 +38,23 @@ you'd need to implement an anonymous inner class derived from the Operation<T> i
 
     def state2 = state1.modify({ s -> s + " " })
 
+In Java, you would pass an Operation<T>:
+
+    Operation<String> op = new Operation<String>() {
+      public String invoke(String s) {
+        return s + " World!";
+      }
+    }
+    Statebox<String> state2 = state1.modify(op);
+
+And in Scala, you'd use an anonymous function:
+
+    val state2 = state1.modify((s: String) => s + " World!")
+
+There are no wrappers required for this functionality. There is special code inside JStatebox
+that understands what to do with Groovy closures and Scala functions (if the respective runtimes
+are available in the classpath at runtime).
+
 The value you return from this operation will be the new value of `state2`. If you modified
 `state1` again by calling the `modify` method with a new operation, you'll get an entirely new
 statebox with an entirely new value.
