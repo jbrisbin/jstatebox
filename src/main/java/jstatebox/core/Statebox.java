@@ -16,17 +16,18 @@
 
 package jstatebox.core;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.Serializable;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.concurrent.Callable;
-
-import groovy.lang.Closure;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import scala.Function1;
 
 /**
  * A statebox implementation for the JVM. Understands Java, Groovy, and Scala natively.
@@ -36,8 +37,6 @@ import scala.Function1;
  * @author Jon Brisbin <jon@jbrisbin.com>
  */
 public class Statebox<T> implements Serializable {
-
-  protected final Logger log = LoggerFactory.getLogger(getClass());
 
   protected static boolean IS_GROOVY_PRESENT;
   protected static boolean IS_SCALA_PRESENT = false;
@@ -66,16 +65,51 @@ public class Statebox<T> implements Serializable {
   /**
    * Create a new statebox, wrapping the given value.
    *
-   * @param value
+   * @param value The immutable value of this statebox.
    */
   public static <T> Statebox<T> create(T value) {
     return new Statebox<>(value);
   }
 
   /**
+   * Serialize a statebox to a ByteBuffer for saving to a file, sending to a DB, or sending via message.
+   *
+   * @param statebox The statebox to serialize.
+   * @return The ByteBuffer containing the serialized statebox.
+   * @throws IOException
+   */
+  public static <T> ByteBuffer serialize(Statebox<T> statebox) throws IOException {
+    ByteArrayOutputStream bout = new ByteArrayOutputStream();
+    ObjectOutputStream oout = new ObjectOutputStream(bout);
+    oout.writeObject(statebox);
+    oout.flush();
+
+    return ByteBuffer.wrap(bout.toByteArray());
+  }
+
+  /**
+   * Deserialize a statebox.
+   *
+   * @param buffer The buffer containing the serialized statebox.
+   * @return The deserialized statebox.
+   * @throws IOException
+   * @throws ClassNotFoundException Usually thrown when the JVM into which this statebox is deserialized
+   *                                doesn't have the classes assigned as operations.
+   */
+  @SuppressWarnings({"unchecked"})
+  public static <T> Statebox<T> deserialize(ByteBuffer buffer) throws IOException, ClassNotFoundException {
+    byte[] bytes = new byte[buffer.remaining()];
+    buffer.get(bytes);
+    ObjectInputStream oin = new ObjectInputStream(new ByteArrayInputStream(bytes));
+    Statebox<T> statebox = (Statebox<T>) oin.readObject();
+
+    return statebox;
+  }
+
+  /**
    * Retrieve the value originally set in this statebox.
    *
-   * @return
+   * @return The immutable value of this statebox.
    */
   public T value() {
     return value;
@@ -84,7 +118,7 @@ public class Statebox<T> implements Serializable {
   /**
    * When this statebox was last modified or merged.
    *
-   * @return
+   * @return The time (in milliseconds) when this statebox was last mutated or merged.
    */
   public Long lastModified() {
     return lastModified;
@@ -93,8 +127,8 @@ public class Statebox<T> implements Serializable {
   /**
    * Remove any operations that are older than the given age.
    *
-   * @param age
-   * @return
+   * @param age The number of milliseconds past which to expire operations.
+   * @return This statebox with old operations removed.
    */
   public Statebox<T> expire(Long age) {
     List<StateboxOp> opsToRemove = new ArrayList<>();
@@ -113,9 +147,8 @@ public class Statebox<T> implements Serializable {
    * Mutate the value of this statebox into a new statebox that is the result of call
    * the operation and passing the current value.
    *
-   * @param operation
-   * @param <Op>
-   * @return
+   * @param operation An operation to perform to mutate the value of this statebox into a new value.
+   * @return A new statebox containing the result of this operation on the current statebox's value.
    */
   public <Op> Statebox<T> modify(Op operation) {
     ops.add(new StateboxOp(operation));
@@ -132,14 +165,18 @@ public class Statebox<T> implements Serializable {
    */
   @SuppressWarnings({"unchecked"})
   public Statebox<T> merge(Statebox... stateboxes) {
+
+    SortedSet<StateboxOp> mergedOps = new TreeSet<>();
+    mergedOps.addAll(ops);
+
     for (Statebox st : stateboxes) {
       for (Object op : st.ops) {
-        ops.add((StateboxOp) op);
+        mergedOps.add((StateboxOp) op);
       }
     }
 
     T val = value();
-    for (StateboxOp op : ops) {
+    for (StateboxOp op : mergedOps) {
       val = invoke(op.operation, val);
     }
 
@@ -155,14 +192,14 @@ public class Statebox<T> implements Serializable {
     }
 
     if (IS_GROOVY_PRESENT) {
-      if (op instanceof Closure) {
-        return (T) ((Closure) op).call(value);
+      if (op instanceof groovy.lang.Closure) {
+        return (T) ((groovy.lang.Closure) op).call(value);
       }
     }
 
     if (IS_SCALA_PRESENT) {
-      if (op instanceof Function1) {
-        return (T) ((Function1) op).apply(value);
+      if (op instanceof scala.Function1) {
+        return (T) ((scala.Function1) op).apply(value);
       }
     }
 
@@ -189,7 +226,7 @@ public class Statebox<T> implements Serializable {
         "\n}";
   }
 
-  private class StateboxOp implements Comparable<StateboxOp> {
+  private class StateboxOp implements Comparable<StateboxOp>, Serializable {
 
     private final Long timestamp = System.currentTimeMillis();
     private final Object operation;
