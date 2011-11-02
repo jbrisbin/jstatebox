@@ -32,6 +32,9 @@ dependencies {
   // Scala
   compile "org.scala-lang:scala-library:$scalaVersion"
 
+  // Clojure
+  compile "org.clojure:clojure:$clojureVersion"
+
   // Testing
   testCompile "org.spockframework:spock-core:$spockVersion"
   testCompile "org.hamcrest:hamcrest-all:1.1"

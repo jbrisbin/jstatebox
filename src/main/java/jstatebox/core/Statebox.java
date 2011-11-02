@@ -38,20 +38,20 @@ import java.util.concurrent.Callable;
  */
 public class Statebox<T> implements Serializable {
 
-  protected static boolean IS_GROOVY_PRESENT;
+  protected static boolean IS_GROOVY_PRESENT = false;
   protected static boolean IS_SCALA_PRESENT = false;
+  protected static boolean IS_CLOJURE_PRESENT = false;
 
   static {
     try {
       IS_GROOVY_PRESENT = Class.forName("groovy.lang.Closure") != null;
-    } catch (ClassNotFoundException e) {
-      IS_GROOVY_PRESENT = false;
-    }
+    } catch (ClassNotFoundException e) {}
     try {
-      IS_SCALA_PRESENT = Class.forName("scala.Any") != null;
-    } catch (ClassNotFoundException e) {
-      IS_SCALA_PRESENT = false;
-    }
+      IS_SCALA_PRESENT = Class.forName("scala.Function1") != null;
+    } catch (ClassNotFoundException e) {}
+    try {
+      IS_CLOJURE_PRESENT = Class.forName("clojure.lang.Fn") != null;
+    } catch (ClassNotFoundException e) {}
   }
 
   protected final T value;
@@ -144,6 +144,29 @@ public class Statebox<T> implements Serializable {
   }
 
   /**
+   * Truncate the operations to the last N.
+   *
+   * @param num
+   * @return
+   */
+  @SuppressWarnings({"unchecked"})
+  public Statebox<T> truncate(int num) {
+    if (ops.size() > num) {
+      Statebox<T> st = new Statebox<>(value);
+      int size = ops.size();
+      Object[] opsa = ops.toArray();
+      // Get a subset of the last N operations
+      for (int i = (size - num); i < size; i++) {
+        st.ops.add((Statebox<T>.StateboxOp) opsa[i]);
+      }
+
+      return st;
+    }
+
+    return this;
+  }
+
+  /**
    * Mutate the value of this statebox into a new statebox that is the result of call
    * the operation and passing the current value.
    *
@@ -200,6 +223,12 @@ public class Statebox<T> implements Serializable {
     if (IS_SCALA_PRESENT) {
       if (op instanceof scala.Function1) {
         return (T) ((scala.Function1) op).apply(value);
+      }
+    }
+
+    if (IS_CLOJURE_PRESENT) {
+      if (op instanceof clojure.lang.IFn) {
+        return (T) ((clojure.lang.IFn) op).invoke(value);
       }
     }
 

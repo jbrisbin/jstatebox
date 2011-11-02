@@ -13,16 +13,35 @@ class StateboxSpec extends Specification {
     def st1 = Statebox.create("Hello")
 
     when:
-    def st2 = st1.modify({value ->
+    def st2 = st1.modify {value ->
       value + " "
-    })
-    def st3 = st1.modify({value ->
+    }
+    def st3 = st1.modify {value ->
       value + "World!"
-    })
+    }
     def st4 = st1.merge(st2, st3)
 
     then:
     st4.value() == "Hello World!"
+
+  }
+
+  def "Test that Statebox respects truncation"() {
+
+    given:
+    def st1 = Statebox.create("Hello")
+
+    when:
+    def st2 = st1.modify {value ->
+      value + " "
+    }
+    def st3 = st1.modify {value ->
+      value + "World!"
+    }
+    def st4 = st1.truncate(1).merge(st2, st3)
+
+    then:
+    st4.value() == "HelloWorld!"
 
   }
 
