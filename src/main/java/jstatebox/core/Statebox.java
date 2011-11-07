@@ -50,7 +50,7 @@ public class Statebox<T> implements Serializable {
       IS_SCALA_PRESENT = Class.forName("scala.Function1") != null;
     } catch (ClassNotFoundException e) {}
     try {
-      IS_CLOJURE_PRESENT = Class.forName("clojure.lang.Fn") != null;
+      IS_CLOJURE_PRESENT = Class.forName("clojure.lang.IFn") != null;
     } catch (ClassNotFoundException e) {}
   }
 
@@ -167,7 +167,7 @@ public class Statebox<T> implements Serializable {
   }
 
   /**
-   * Mutate the value of this statebox into a new statebox that is the result of call
+   * Mutate the value of this statebox into a new statebox that is the result of calling
    * the operation and passing the current value.
    *
    * @param operation An operation to perform to mutate the value of this statebox into a new value.
