@@ -28,6 +28,12 @@ import java.util.List;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+import jstatebox.io.OperationCodec;
+import jstatebox.io.OperationCodecMapper;
+import jstatebox.io.groovy.GroovyOperationCodecMapper;
+import jstatebox.io.java.JavaOperationCodecMapper;
 
 /**
  * A statebox implementation for the JVM. Understands Java, Groovy, and Scala natively.
@@ -53,6 +59,13 @@ public class Statebox<T> implements Serializable {
       IS_CLOJURE_PRESENT = Class.forName("clojure.lang.IFn") != null;
     } catch (ClassNotFoundException e) {}
   }
+
+  public static final List<OperationCodecMapper> CODEC_MAPPERS = new CopyOnWriteArrayList<OperationCodecMapper>() {{
+    if (IS_GROOVY_PRESENT) {
+      add(new GroovyOperationCodecMapper());
+    }
+    add(new JavaOperationCodecMapper());
+  }};
 
   protected final T origValue;
   protected T mutatedValue;
@@ -80,16 +93,27 @@ public class Statebox<T> implements Serializable {
    * @throws IOException
    */
   public static <T> ByteBuffer serialize(Statebox<T> statebox) throws IOException {
+    ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
     ByteArrayOutputStream bout = new ByteArrayOutputStream();
     ObjectOutputStream oout = new ObjectOutputStream(bout);
-    oout.writeObject(statebox);
-    oout.flush();
+    oout.writeObject(statebox.origValue);
+    oout.writeInt(statebox.ops.size());
+    for (StateboxOp op : statebox.ops) {
+      oout.writeLong(op.timestamp);
+      OperationCodec codec = findCodecFor(op.operation);
+      if (null == codec) {
+        throw new IllegalStateException("No OperationCodec registered for " + op.operation);
+      }
+      oout.writeObject(codec.getClass().getName());
+      oout.writeObject(codec.encode(op.operation, classLoader).array());
+    }
+    oout.close();
 
     return ByteBuffer.wrap(bout.toByteArray());
   }
 
   /**
-   * Deserialize a statebox.
+   * Deserialize a statebox from a file, a DB, or from a message.
    *
    * @param buffer The buffer containing the serialized statebox.
    * @return The deserialized statebox.
@@ -99,12 +123,44 @@ public class Statebox<T> implements Serializable {
    */
   @SuppressWarnings({"unchecked"})
   public static <T> Statebox<T> deserialize(ByteBuffer buffer) throws IOException, ClassNotFoundException {
+    ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
     byte[] bytes = new byte[buffer.remaining()];
     buffer.get(bytes);
     ObjectInputStream oin = new ObjectInputStream(new ByteArrayInputStream(bytes));
-    Statebox<T> statebox = (Statebox<T>) oin.readObject();
+
+    T origValue = (T) oin.readObject();
+    Statebox<T> statebox = new Statebox<>(origValue);
+    int opsSize = oin.readInt();
+    for (int i = 0; i < opsSize; i++) {
+      Long timestamp = oin.readLong();
+      String opCodecName = (String) oin.readObject();
+      OperationCodec opCodec = findCodecForName(opCodecName);
+      byte[] opBuff = (byte[]) oin.readObject();
+      Object operation = opCodec.decode(ByteBuffer.wrap(opBuff), classLoader);
+      StateboxOp stOp = new StateboxOp(operation);
+      stOp.timestamp = timestamp;
+      statebox.ops.add(stOp);
+    }
 
     return statebox;
+  }
+
+  protected static OperationCodec findCodecForName(String name) {
+    for (OperationCodecMapper mapper : CODEC_MAPPERS) {
+      if (name.equals(mapper.getCodecName())) {
+        return mapper.getCodec();
+      }
+    }
+    return null;
+  }
+
+  protected static OperationCodec findCodecFor(Object operation) {
+    for (OperationCodecMapper mapper : CODEC_MAPPERS) {
+      if (mapper.isCodecFor(operation)) {
+        return mapper.getCodec();
+      }
+    }
+    return null;
   }
 
   /**
@@ -158,7 +214,7 @@ public class Statebox<T> implements Serializable {
       Object[] opsa = ops.toArray();
       // Get a subset of the last N operations
       for (int i = (size - num); i < size; i++) {
-        st.ops.add((Statebox<T>.StateboxOp) opsa[i]);
+        st.ops.add((StateboxOp) opsa[i]);
       }
 
       return st;
@@ -258,10 +314,10 @@ public class Statebox<T> implements Serializable {
         "\n}";
   }
 
-  private class StateboxOp implements Comparable<StateboxOp>, Serializable {
+  private static class StateboxOp implements Comparable<StateboxOp>, Serializable {
 
-    private final Long timestamp = System.currentTimeMillis();
-    private final Object operation;
+    private Long timestamp = System.currentTimeMillis();
+    private Object operation;
 
     private StateboxOp(Object operation) {
       this.operation = operation;

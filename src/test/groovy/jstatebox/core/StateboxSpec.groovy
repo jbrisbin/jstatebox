@@ -45,4 +45,25 @@ class StateboxSpec extends Specification {
 
   }
 
+  def "Test serialization/deserialization"() {
+
+    given:
+    def st1 = Statebox.create("Hello")
+    def st2 = st1.modify {value ->
+      value + " "
+    }
+    def outBuff = Statebox.serialize(st2)
+    def st3 = Statebox.deserialize(outBuff)
+    def st4 = st1.modify({value ->
+      value + "World!"
+    })
+
+    when:
+    def st5 = st1.merge(st3, st4)
+
+    then:
+    st5.value() == "Hello World!"
+
+  }
+
 }
