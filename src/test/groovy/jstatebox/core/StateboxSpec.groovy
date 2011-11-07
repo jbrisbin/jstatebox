@@ -38,7 +38,7 @@ class StateboxSpec extends Specification {
     def st3 = st1.modify {value ->
       value + "World!"
     }
-    def st4 = st1.truncate(1).merge(st2, st3)
+    def st4 = st1.merge(st2.truncate(0), st3)
 
     then:
     st4.value() == "HelloWorld!"

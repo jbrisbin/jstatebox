@@ -54,12 +54,13 @@ public class Statebox<T> implements Serializable {
     } catch (ClassNotFoundException e) {}
   }
 
-  protected final T value;
+  protected final T origValue;
+  protected T mutatedValue;
   protected final SortedSet<StateboxOp> ops = new TreeSet<>();
   protected Long lastModified = System.currentTimeMillis();
 
   protected Statebox(T value) {
-    this.value = value;
+    this.origValue = this.mutatedValue = value;
   }
 
   /**
@@ -112,7 +113,7 @@ public class Statebox<T> implements Serializable {
    * @return The immutable value of this statebox.
    */
   public T value() {
-    return value;
+    return mutatedValue;
   }
 
   /**
@@ -152,7 +153,7 @@ public class Statebox<T> implements Serializable {
   @SuppressWarnings({"unchecked"})
   public Statebox<T> truncate(int num) {
     if (ops.size() > num) {
-      Statebox<T> st = new Statebox<>(value);
+      Statebox<T> st = new Statebox<>(origValue);
       int size = ops.size();
       Object[] opsa = ops.toArray();
       // Get a subset of the last N operations
@@ -174,10 +175,12 @@ public class Statebox<T> implements Serializable {
    * @return A new statebox containing the result of this operation on the current statebox's value.
    */
   public <Op> Statebox<T> modify(Op operation) {
-    ops.add(new StateboxOp(operation));
-    lastModified = System.currentTimeMillis();
+    Statebox<T> statebox = new Statebox<>(origValue);
+    statebox.mutatedValue = invoke(operation, origValue);
+    statebox.ops.add(new StateboxOp(operation));
+    lastModified = statebox.lastModified = System.currentTimeMillis();
 
-    return new Statebox<>(invoke(operation, value()));
+    return statebox;
   }
 
   /**
@@ -249,7 +252,7 @@ public class Statebox<T> implements Serializable {
 
   @Override public String toString() {
     return "\nStatebox {" +
-        "\n\t value=" + value +
+        "\n\t value=" + mutatedValue +
         ",\n\t ops=" + ops +
         ",\n\t lastModified=" + lastModified +
         "\n}";
