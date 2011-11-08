@@ -257,7 +257,7 @@ public class Statebox<T> implements Serializable {
       }
     }
 
-    T val = value();
+    T val = origValue;
     for (StateboxOp op : mergedOps) {
       val = invoke(op.operation, val);
     }

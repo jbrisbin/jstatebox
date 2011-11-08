@@ -47,8 +47,8 @@ import jstatebox.io.OperationCodec;
 public class GroovyOperationCodec implements OperationCodec {
 
   @Override public ByteBuffer encode(Object operation, ClassLoader classLoader) throws IOException {
-    List<ByteBuffer> buffers = new ArrayList<>();
-    int totalSize = 0;
+    List<byte[]> buffers = new ArrayList<>();
+    int totalSize = 4;
     Class<?> clazz = operation.getClass();
     String packagePath = packagePath(clazz);
     String innerClassPrefix = innerClassPrefix(clazz);
@@ -74,9 +74,9 @@ public class GroovyOperationCodec implements OperationCodec {
           File packageDir = null != packagePath ? new File(classes, packagePath) : classes;
           if (packageDir.exists()) {
             for (String classFile : packageDir.list(new PrefixBasedFilenameFilter(innerClassPrefix))) {
-              ByteBuffer buffer = ByteBuffer.wrap(Files.readAllBytes(Paths.get(classFile)));
-              buffers.add(buffer);
-              totalSize += 4 + buffer.remaining();
+              byte[] bytes = Files.readAllBytes(Paths.get(classFile));
+              buffers.add(bytes);
+              totalSize += 4 + bytes.length;
             }
           }
         } else if (classes.getName().endsWith(".jar") || classes.getName().endsWith(".zip")) {
@@ -87,9 +87,9 @@ public class GroovyOperationCodec implements OperationCodec {
               ZipEntry entry = entries.nextElement();
               String name = entry.getName();
               if (name.startsWith(innerClassPrefix) && name.endsWith(".class")) {
-                ByteBuffer buffer = read(zipFile.getInputStream(entry));
-                buffers.add(buffer);
-                totalSize += 4 + buffer.remaining();
+                byte[] bytes = readFully(zipFile.getInputStream(entry));
+                buffers.add(bytes);
+                totalSize += 4 + bytes.length;
               }
             }
           }
@@ -100,7 +100,7 @@ public class GroovyOperationCodec implements OperationCodec {
     // Encode the operation itself
     ByteArrayOutputStream bout = new ByteArrayOutputStream();
     ObjectOutputStream oout = new ObjectOutputStream(bout);
-    // Clear certain things about this
+    // Clear certain things that entangle us
     if (operation instanceof Closure) {
       Closure cl = (Closure) operation;
       cl.getMetaClass().setAttribute(operation, "owner", null);
@@ -112,12 +112,18 @@ public class GroovyOperationCodec implements OperationCodec {
     byte[] opBytes = bout.toByteArray();
     totalSize += 4 + opBytes.length;
 
-    // Turn it all into a ByteBuffer
-    ByteBuffer compositeBuffer = ByteBuffer.allocate(totalSize + 4);
+    // Encode all this into a ByteBuffer using the following protocol:
+    // 1. Number of buffers (4 bytes)
+    // 2. For each buffer, write:
+    //    1. Buffer length (4 bytes)
+    //    2. Buffer (variable length)
+    // 3. Length of encoded operation (4 bytes)
+    // 4. Encoded operation (variable length)
+    ByteBuffer compositeBuffer = ByteBuffer.allocate(totalSize);
     compositeBuffer.putInt(buffers.size());
-    for (ByteBuffer bb : buffers) {
-      compositeBuffer.putInt(bb.remaining());
-      compositeBuffer.put(bb);
+    for (byte[] bytes : buffers) {
+      compositeBuffer.putInt(bytes.length);
+      compositeBuffer.put(bytes);
     }
     compositeBuffer.putInt(opBytes.length);
     compositeBuffer.put(opBytes);
@@ -142,6 +148,7 @@ public class GroovyOperationCodec implements OperationCodec {
     buffer.get(oBytes);
     ClassLoaderAwareObjectInputStream oin = new ClassLoaderAwareObjectInputStream(new ByteArrayInputStream(oBytes),
                                                                                   gcl);
+
     return oin.readObject();
   }
 
@@ -170,7 +177,7 @@ public class GroovyOperationCodec implements OperationCodec {
     return null;
   }
 
-  private ByteBuffer read(InputStream in) throws IOException {
+  private byte[] readFully(InputStream in) throws IOException {
     BufferedInputStream bin = new BufferedInputStream(in);
     ByteArrayOutputStream bout = new ByteArrayOutputStream();
     byte[] buff = new byte[16 * 1024];
@@ -178,7 +185,7 @@ public class GroovyOperationCodec implements OperationCodec {
     while (read > 0) {
       bout.write(buff, 0, read);
     }
-    return ByteBuffer.wrap(bout.toByteArray());
+    return bout.toByteArray();
   }
 
   private class PrefixBasedFilenameFilter implements FilenameFilter {

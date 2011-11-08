@@ -34,9 +34,7 @@ public class JavaOperationCodec implements OperationCodec {
     ByteArrayOutputStream bout = new ByteArrayOutputStream();
     ObjectOutputStream oout = new ObjectOutputStream(bout);
     oout.writeObject(operation);
-    oout.flush();
     oout.close();
-    bout.flush();
 
     return ByteBuffer.wrap(bout.toByteArray());
   }
@@ -47,6 +45,7 @@ public class JavaOperationCodec implements OperationCodec {
     buffer.get(bytes);
     ClassLoaderAwareObjectInputStream oin = new ClassLoaderAwareObjectInputStream(new ByteArrayInputStream(bytes),
                                                                                   classLoader);
+
     return oin.readObject();
   }
 
